@@ -1,10 +1,10 @@
 
-# 🚀 TraceAssist
+# 🚀 InsightAssist
 
 [![SigNoz](https://img.shields.io/badge/Observability-SigNoz-orange.svg)](https://signoz.io/)  
 [![OpenTelemetry](https://img.shields.io/badge/Telemetry-OpenTelemetry-lightgrey.svg)](https://opentelemetry.io/)
 
-**TraceAssist** is a Kubernetes-native observability helper that automatically instruments your Java, Node.js, or Python applications, ships traces, metrics & logs to SigNoz Cloud, and even suggests manual instrumentation via AI. All you do is point TraceAssist at your un-instrumented code (zip or GitHub repo) and hit **Instrument**—we handle the rest!
+**InsightAssist** is a Kubernetes-native observability helper that automatically instruments your Java, Node.js, or Python applications, ships traces, metrics & logs to SigNoz Cloud, and even suggests manual instrumentation via AI. All you do is point InsightAssist at your un-instrumented code (zip or GitHub repo) and hit **Instrument**—we handle the rest!
 
 ---
 
@@ -41,7 +41,7 @@
 User App (zip / Git Repo)
 │
 ▼
-TraceAssist Backend ──► Kubernetes Manifests (deployment+service .yaml)
+InsightAssist Backend ──► Kubernetes Manifests (deployment+service .yaml)
 │
 ├── OpenTelemetry Operator (auto-inject sidecars)
 │
@@ -73,8 +73,8 @@ TraceAssist Backend ──► Kubernetes Manifests (deployment+service .yaml)
 ### 1. Clone & Configure
 
 ```bash
-git clone https://github.com/harshit-jindal02/traceAssist.git
-cd traceAssist
+git clone https://github.com/harshit-jindal02/InsightAssist.git
+cd InsightAssist
 cp .env.sample .env
 # Edit .env:
 #   OPENAI_API_KEY=sk-…
@@ -95,13 +95,13 @@ This will:
 - Install SigNoz (Helm chart) in `signoz` ns
 - Install cert-manager & OTel Operator
 - Apply your Collector DaemonSet and Instrumentation CR
-- Deploy TraceAssist services in `traceassist` ns
+- Deploy InsightAssist services in `InsightAssist` ns
 
 ### 3. Instrument a User App
 
-1. Visit: `http://localhost:5173` (TraceAssist UI)
+1. Visit: `http://localhost:5173` (InsightAssist UI)
 2. **Upload Zip** or **Clone GitHub Repo** (e.g. `https://github.com/heroku/node-js-getting-started.git`)
-3. Click **Instrument** → watch your app deploy in `traceassist` ns
+3. Click **Instrument** → watch your app deploy in `InsightAssist` ns
 4. Visit **SigNoz** dashboard (logs / metrics / traces)
 
 ---
