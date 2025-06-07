@@ -9,7 +9,7 @@
 ---
 
 **Demo**
-https://github.com/user-attachments/assets/e062055a-0165-4e8f-9613-09c4afe742d1
+https://github.com/user-attachments/assets/490b58d5-6da7-428b-af55-f7776b0126d9
 
 ## 📋 Table of Contents
 
