@@ -8,8 +8,9 @@
 
 ---
 
-**Demo**
-https://github.com/user-attachments/assets/490b58d5-6da7-428b-af55-f7776b0126d9
+## Demo
+
+https://youtu.be/78b0B-wF314
 
 ## 📋 Table of Contents
 
