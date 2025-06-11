@@ -1,3 +1,170 @@
+# # .github/workflows/cicd.yml
+
+# name: TraceAssist - Full Workflow CI
+
+# on:
+#   push:
+#     branches:
+#       - main
+#   pull_request:
+#     branches:
+#       - main
+#   workflow_dispatch: # Allows manual triggering of the workflow
+
+# jobs:
+#   # This job simulates the entire user flow:
+#   # 1. Sets up a K8s cluster (minikube).
+#   # 2. Deploys the full TraceAssist application.
+#   # 3. Uses the deployed TraceAssist backend to instrument a sample app.
+#   # 4. Cleans up all resources.
+#   instrument-sample-app:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: 1. Checkout Repository
+#         uses: actions/checkout@v4
+
+#       - name: 2. Setup Minikube
+#         uses: medyagh/setup-minikube@latest
+#         # with:
+#         #   minikube-version: default # Specify a stable version
+
+#       - name: 3. Start Minikube Cluster
+#         run: minikube start
+
+#       - name: 4. Setup kubectl & Helm
+#         uses: azure/setup-kubectl@v4
+#         with: { version: 'v1.30.0' }
+#       - uses: azure/setup-helm@v4
+#         with: { version: 'v3.15.2' }
+
+#       - name: 6. Create .env file from Secrets
+#         run: |
+#           echo "SIGNOZ_CLOUD_ENDPOINT=ingest.signoz.cloud:4317" >> .env
+#           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+#           echo "SIGNOZ_CLOUD_API_KEY=${{ secrets.SIGNOZ_CLOUD_API_KEY }}" >> .env
+#           echo "PAT_TOKEN=${{ secrets.PAT_TOKEN }}" >> .env
+#           echo "Created .env file for the setup script."
+#           # Note: The PAT_TOKEN in backend-secret.yaml will be overridden by the
+#           # environment variable set in the backend-deployment.yaml. For the
+#           # run.sh script, we create this .env file which it might source.
+
+#       - name: 7. Run Setup Script to Deploy TraceAssist
+#         run: |
+#           echo "Making run.sh executable..."
+#           chmod +x ./run.sh
+
+#           echo "Setting Docker environment to use Minikube's daemon..."
+#           eval $(minikube -p minikube docker-env)
+
+#           echo "Executing run.sh to build images and deploy TraceAssist..."
+#           ./run.sh
+          
+#       - name: 8. Wait for TraceAssist Deployments to be Ready
+#         run: |
+#           echo "Waiting for TraceAssist deployments to become available (timeout 5m)..."
+#           kubectl wait --for=condition=available deployment/traceassist-backend -n traceassist --timeout=300s
+#           kubectl wait --for=condition=available deployment/traceassist-frontend -n traceassist --timeout=300s
+#           kubectl wait --for=condition=available deployment/traceassist-ai-agent -n traceassist --timeout=300s
+#           echo "TraceAssist pods are running."
+#           kubectl get pods -n traceassist
+
+#       - name: 9. Port-forward Backend Service
+#         run: |
+#           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
+#           # Store the process ID of the port-forward command
+#           echo "BACKEND_PID=$!" >> $GITHUB_ENV
+#           echo "Port-forwarding started in the background. Waiting 5s for it to establish..."
+#           sleep 5
+
+#       - name: 10. Simulate User Flow via API
+#         id: api_flow
+#         shell: bash
+#         run: |
+#           set -e # Exit immediately if a command exits with a non-zero status.
+          
+#           # A sample application to test with
+#           SAMPLE_REPO="https://github.com/heroku/node-js-getting-started.git"
+          
+#           # --- Step: CLONE ---
+#           echo "--- 1/4: Calling /clone endpoint for ${SAMPLE_REPO} ---"
+#           CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone \
+#             -H "Content-Type: application/json" \
+#             -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
+#           echo "Clone Response: $CLONE_RESPONSE"
+#           # Extract app_id from the response using jq
+#           APP_ID=$(echo $CLONE_RESPONSE | jq -r .app_id)
+#           if [ "$APP_ID" == "null" ] || [ -z "$APP_ID" ]; then
+#             echo "::error::Failed to get app_id from /clone response."
+#             exit 1
+#           fi
+#           echo "Successfully cloned. Received app_id: $APP_ID"
+          
+#           # --- Step: INSTRUMENT ---
+#           echo "--- 2/4: Calling /instrument endpoint for app_id: $APP_ID ---"
+#           INSTRUMENT_RESPONSE=$(curl -s -X POST http://localhost:8000/instrument \
+#             -H "Content-Type: application/json" \
+#             -d "{\"app_id\": \"$APP_ID\"}")
+#           echo "Instrument Response: $INSTRUMENT_RESPONSE"
+#           # Extract the k8s app name to wait for its deployment
+#           K8S_APP_NAME=$(echo $INSTRUMENT_RESPONSE | jq -r .k8s_app_name)
+#           if [ "$K8S_APP_NAME" == "null" ] || [ -z "$K8S_APP_NAME" ]; then
+#             echo "::error::Failed to get k8s_app_name from /instrument response."
+#             exit 1
+#           fi
+#           echo "Waiting for user app deployment '$K8S_APP_NAME-deployment' to be ready..."
+#           kubectl wait --for=condition=available deployment/$K8S_APP_NAME -n traceassist --timeout=300s
+#           echo "User app deployed successfully."
+          
+#           # --- Step: RUN ---
+#           echo "--- 3/4: Calling /run endpoint for confirmation ---"
+#           RUN_RESPONSE=$(curl -s -X POST http://localhost:8000/run \
+#             -H "Content-Type: application/json" \
+#             -d "{\"app_id\": \"$APP_ID\"}")
+#           echo "Run Response: $RUN_RESPONSE"
+          
+#           # --- Step: SUGGEST ---
+#           echo "--- 4/4: Calling /suggestions endpoint for AI analysis ---"
+#           SUGGEST_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST http://localhost:8000/suggestions \
+#             -H "Content-Type: application/json" \
+#             -d "{\"app_id\": \"$APP_ID\"}")
+          
+#           # Extract body and status code
+#           HTTP_BODY=$(echo "$SUGGEST_RESPONSE" | sed '$d')
+#           HTTP_STATUS=$(echo "$SUGGEST_RESPONSE" | tail -n1 | sed 's/.*://')
+
+#           echo "Suggest Response Status: $HTTP_STATUS"
+#           echo "Suggest Response Body: $HTTP_BODY"
+#           if [ "$HTTP_STATUS" -ne 200 ]; then
+#             echo "::error::Suggestions endpoint failed with status $HTTP_STATUS"
+#             exit 1
+#           fi
+#           SUGGESTIONS_CONTENT=$(echo "$HTTP_BODY" | jq -r .suggestions)
+#           if [ -z "$SUGGESTIONS_CONTENT" ]; then
+#             echo "::error::Received an empty suggestions string from the API."
+#             exit 1
+#           fi
+#           echo "Successfully received AI suggestions."
+
+#       - name: 11. Cleanup All Resources
+#         if: always() # This step runs even if previous steps fail
+#         run: |
+#           echo "Stopping port-forward process (PID: ${{ env.BACKEND_PID }})..."
+#           kill ${{ env.BACKEND_PID }} || echo "Port-forward process already stopped."
+          
+#           echo "Making cleanup.sh executable..."
+#           chmod +x ./cleanup.sh
+          
+#           echo "Executing cleanup.sh..."
+#           ./cleanup.sh
+          
+#           echo "Stopping Minikube..."
+#           minikube stop
+          
+#           echo "Cleanup complete."
+
+
+
+
 # .github/workflows/cicd.yml
 
 name: TraceAssist - Full Workflow CI
@@ -9,27 +176,20 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch: # Allows manual triggering of the workflow
+  workflow_dispatch:
 
 jobs:
-  # This job simulates the entire user flow:
-  # 1. Sets up a K8s cluster (minikube).
-  # 2. Deploys the full TraceAssist application.
-  # 3. Uses the deployed TraceAssist backend to instrument a sample app.
-  # 4. Cleans up all resources.
   instrument-sample-app:
     runs-on: ubuntu-latest
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 2. Setup Minikube
-        uses: medyagh/setup-minikube@latest
-        # with:
-        #   minikube-version: default # Specify a stable version
+      - name: 2. Setup Minikube Binary
+        uses: medyagh/setup-minikube@v0.0.17
 
       - name: 3. Start Minikube Cluster
-        run: minikube start
+        run: minikube start --driver=docker --memory=4096
 
       - name: 4. Setup kubectl & Helm
         uses: azure/setup-kubectl@v4
@@ -37,127 +197,98 @@ jobs:
       - uses: azure/setup-helm@v4
         with: { version: 'v3.15.2' }
 
-      - name: 6. Create .env file from Secrets
+      - name: 5. Create .env file from Secrets
         run: |
           echo "SIGNOZ_CLOUD_ENDPOINT=ingest.signoz.cloud:4317" >> .env
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
           echo "SIGNOZ_CLOUD_API_KEY=${{ secrets.SIGNOZ_CLOUD_API_KEY }}" >> .env
           echo "PAT_TOKEN=${{ secrets.PAT_TOKEN }}" >> .env
-          echo "Created .env file for the setup script."
-          # Note: The PAT_TOKEN in backend-secret.yaml will be overridden by the
-          # environment variable set in the backend-deployment.yaml. For the
-          # run.sh script, we create this .env file which it might source.
+
+      # --- START: MODIFIED STEP TO FIX THE ERROR ---
+      - name: 6. Update override-values.yaml with Secret
+        run: |
+          echo "Replacing placeholder in override-values.yaml..."
+          # Use sed to find the placeholder and replace it with the secret.
+          # The -i flag modifies the file in-place.
+          sed -i 's|YOUR_SIGNOZ_API_KEY_PLACEHOLDER|${{ secrets.SIGNOZ_CLOUD_API_KEY }}|g' override-values.yaml
+          
+          echo "Verification: Checking the content of the signozApiKey line (key will be masked in logs):"
+          grep "signozApiKey" override-values.yaml
+      # --- END: MODIFIED STEP ---
 
       - name: 7. Run Setup Script to Deploy TraceAssist
         run: |
-          echo "Making run.sh executable..."
           chmod +x ./run.sh
-
-          echo "Setting Docker environment to use Minikube's daemon..."
           eval $(minikube -p minikube docker-env)
-
-          echo "Executing run.sh to build images and deploy TraceAssist..."
+          # The run.sh script will now use the MODIFIED override-values.yaml file
           ./run.sh
           
-      - name: 8. Wait for TraceAssist Deployments to be Ready
+      - name: 8. Wait for All Deployments to be Ready
         run: |
-          echo "Waiting for TraceAssist deployments to become available (timeout 5m)..."
-          kubectl wait --for=condition=available deployment/traceassist-backend -n traceassist --timeout=300s
-          kubectl wait --for=condition=available deployment/traceassist-frontend -n traceassist --timeout=300s
-          kubectl wait --for=condition=available deployment/traceassist-ai-agent -n traceassist --timeout=300s
-          echo "TraceAssist pods are running."
-          kubectl get pods -n traceassist
+          echo "Waiting for all deployments in 'traceassist' and 'signoz' namespaces... (timeout 5m)"
+          kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
+          kubectl wait --for=condition=available deployment --all -n signoz --timeout=300s
+          echo "All required pods are running."
+          kubectl get pods -A
 
       - name: 9. Port-forward Backend Service
         run: |
           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
-          # Store the process ID of the port-forward command
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
-          echo "Port-forwarding started in the background. Waiting 5s for it to establish..."
-          sleep 5
 
-      - name: 10. Simulate User Flow via API
+      - name: 10. Wait for Port-forward to be Ready
+        run: |
+          echo "Waiting for port-forward to establish..."
+          for i in {1..20}; do
+            if curl -s --fail http://localhost:8000/ > /dev/null; then
+              echo "Port-forward is ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Port-forward failed to become ready after 20 seconds."
+          exit 1
+      
+      - name: 11. Simulate User Flow via API
         id: api_flow
         shell: bash
         run: |
-          set -e # Exit immediately if a command exits with a non-zero status.
-          
-          # A sample application to test with
+          set -ex
           SAMPLE_REPO="https://github.com/heroku/node-js-getting-started.git"
           
-          # --- Step: CLONE ---
-          echo "--- 1/4: Calling /clone endpoint for ${SAMPLE_REPO} ---"
-          CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone \
-            -H "Content-Type: application/json" \
-            -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
-          echo "Clone Response: $CLONE_RESPONSE"
-          # Extract app_id from the response using jq
+          # --- CLONE ---
+          CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone -H "Content-Type: application/json" -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
           APP_ID=$(echo $CLONE_RESPONSE | jq -r .app_id)
-          if [ "$APP_ID" == "null" ] || [ -z "$APP_ID" ]; then
-            echo "::error::Failed to get app_id from /clone response."
-            exit 1
-          fi
-          echo "Successfully cloned. Received app_id: $APP_ID"
+          if [ -z "$APP_ID" ] || [ "$APP_ID" == "null" ]; then echo "::error::Failed to clone" && exit 1; fi
+          echo "Clone successful. App ID: $APP_ID"
           
-          # --- Step: INSTRUMENT ---
-          echo "--- 2/4: Calling /instrument endpoint for app_id: $APP_ID ---"
-          INSTRUMENT_RESPONSE=$(curl -s -X POST http://localhost:8000/instrument \
-            -H "Content-Type: application/json" \
-            -d "{\"app_id\": \"$APP_ID\"}")
-          echo "Instrument Response: $INSTRUMENT_RESPONSE"
-          # Extract the k8s app name to wait for its deployment
-          K8S_APP_NAME=$(echo $INSTRUMENT_RESPONSE | jq -r .k8s_app_name)
-          if [ "$K8S_APP_NAME" == "null" ] || [ -z "$K8S_APP_NAME" ]; then
-            echo "::error::Failed to get k8s_app_name from /instrument response."
-            exit 1
-          fi
-          echo "Waiting for user app deployment '$K8S_APP_NAME-deployment' to be ready..."
-          kubectl wait --for=condition=available deployment/$K8S_APP_NAME -n traceassist --timeout=300s
-          echo "User app deployed successfully."
+          # --- INSTRUMENT ---
+          INSTRUMENT_RESPONSE=$(curl -s -X POST http://localhost:8000/instrument -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}")
+          K8S_DEPLOYMENT_NAME=$(echo $INSTRUMENT_RESPONSE | jq -r .k8s_deployment_name)
+          if [ -z "$K8S_DEPLOYMENT_NAME" ] || [ "$K8S_DEPLOYMENT_NAME" == "null" ]; then echo "::error::Failed to get k8s_deployment_name" && exit 1; fi
+          echo "Waiting for user app deployment '$K8S_DEPLOYMENT_NAME'..."
+          kubectl wait --for=condition=available deployment/$K8S_DEPLOYMENT_NAME -n traceassist --timeout=300s
+          echo "User app deployed."
           
-          # --- Step: RUN ---
-          echo "--- 3/4: Calling /run endpoint for confirmation ---"
-          RUN_RESPONSE=$(curl -s -X POST http://localhost:8000/run \
-            -H "Content-Type: application/json" \
-            -d "{\"app_id\": \"$APP_ID\"}")
-          echo "Run Response: $RUN_RESPONSE"
+          # --- RUN ---
+          curl -s -X POST http://localhost:8000/run -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}" | jq .
           
-          # --- Step: SUGGEST ---
-          echo "--- 4/4: Calling /suggestions endpoint for AI analysis ---"
-          SUGGEST_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST http://localhost:8000/suggestions \
-            -H "Content-Type: application/json" \
-            -d "{\"app_id\": \"$APP_ID\"}")
-          
-          # Extract body and status code
+          # --- SUGGEST ---
+          SUGGEST_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST http://localhost:8000/suggestions -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}")
           HTTP_BODY=$(echo "$SUGGEST_RESPONSE" | sed '$d')
           HTTP_STATUS=$(echo "$SUGGEST_RESPONSE" | tail -n1 | sed 's/.*://')
-
-          echo "Suggest Response Status: $HTTP_STATUS"
-          echo "Suggest Response Body: $HTTP_BODY"
-          if [ "$HTTP_STATUS" -ne 200 ]; then
-            echo "::error::Suggestions endpoint failed with status $HTTP_STATUS"
-            exit 1
-          fi
-          SUGGESTIONS_CONTENT=$(echo "$HTTP_BODY" | jq -r .suggestions)
-          if [ -z "$SUGGESTIONS_CONTENT" ]; then
-            echo "::error::Received an empty suggestions string from the API."
-            exit 1
-          fi
+          if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
           echo "Successfully received AI suggestions."
-
-      - name: 11. Cleanup All Resources
-        if: always() # This step runs even if previous steps fail
+          
+      - name: 12. Cleanup All Resources
+        if: always()
         run: |
-          echo "Stopping port-forward process (PID: ${{ env.BACKEND_PID }})..."
-          kill ${{ env.BACKEND_PID }} || echo "Port-forward process already stopped."
+          echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
+          kill ${{ env.BACKEND_PID }} || true
           
-          echo "Making cleanup.sh executable..."
           chmod +x ./cleanup.sh
-          
-          echo "Executing cleanup.sh..."
           ./cleanup.sh
           
-          echo "Stopping Minikube..."
-          minikube stop
-          
+          echo "Deleting Minikube cluster..."
+          minikube delete
           echo "Cleanup complete."
