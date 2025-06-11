@@ -84,8 +84,6 @@ jobs:
           INSTRUMENT_RESPONSE=$(curl -s -X POST http://localhost:8000/instrument -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}")
           K8S_APP_NAME=$(echo $INSTRUMENT_RESPONSE | jq -r .k8s_app_name)
           if [ -z "$K8S_APP_NAME" ] || [ "$K8S_APP_NAME" == "null" ]; then echo "::error::Failed to get k8s_app_name" && exit 1; fi
-          echo "Waiting for user app deployment '$K8S_APP_NAME'..."
-          kubectl wait --for=condition=available deployment/$K8S_APP_NAME -n traceassist --timeout=300s
           echo "User app deployed."
           
           # --- RUN ---
