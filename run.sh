@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-minikube delete && minikube config set memory 8192 && minikube config set cpus 4 && minikube start --memory=8192 --cpus=4
+# minikube delete && minikube start --memory=8192 --cpus=4
+minikube delete && minikube start
 # # ─── Load .env (must define SIGNOZ_CLOUD_ENDPOINT and SIGNOZ_CLOUD_API_KEY) ────
 # if [ -f .env ]; then
 #   echo "🔑 Loading .env"
