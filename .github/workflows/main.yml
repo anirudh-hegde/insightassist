@@ -26,20 +26,20 @@ jobs:
       - name: 2. Setup Minikube
         uses: medyagh/setup-minikube@latest
         with:
-          minikube-version: 'v1.33.1' # Specify a stable version
+          minikube-version: 'v1.35.0' # Specify a stable version
 
       - name: 3. Start Minikube Cluster
-        run: minikube start --driver=docker
+        run: minikube start --memory=8192 --cpus=4
 
       - name: 4. Setup kubectl
         uses: azure/setup-kubectl@v4
         with:
-          version: 'v1.30.0' # Specify a stable version
+          version: 'default' # Specify a stable version
 
       - name: 5. Setup Helm
         uses: azure/setup-helm@v4
         with:
-          version: 'v3.15.2' # Specify a stable version
+          version: 'default' # Specify a stable version
 
       - name: 6. Create .env file from Secrets
         run: |
