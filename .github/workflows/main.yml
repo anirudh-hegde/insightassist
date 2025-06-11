@@ -168,6 +168,7 @@
 # .github/workflows/cicd.yml
 
 name: InsightAssist - Full Workflow CI
+
 on:
   push:
     branches:
@@ -198,47 +199,50 @@ jobs:
 
       - name: 5. Create .env file from Secrets
         run: |
-          echo "SIGNOZ_CLOUD_ENDPOINT=ingest.signoz.cloud:4317" >> .env
+          echo "SIGNOZ_CLOUD_ENDPOINT=ingest.in.signoz.cloud:4317" >> .env
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
           echo "SIGNOZ_CLOUD_API_KEY=${{ secrets.SIGNOZ_CLOUD_API_KEY }}" >> .env
           echo "PAT_TOKEN=${{ secrets.PAT_TOKEN }}" >> .env
 
       - name: 6. Update override-values.yaml with Secret
         run: |
-          echo "Replacing placeholder in override-values.yaml..."
           sed -i 's|YOUR_SIGNOZ_API_KEY_PLACEHOLDER|${{ secrets.SIGNOZ_CLOUD_API_KEY }}|g' override-values.yaml
-          echo "Verification of override-values.yaml:"
-          grep "signozApiKey" override-values.yaml
 
-      # --- START: NEW FOOLPROOF FIX ---
       - name: 7. Modify run.sh to Use Absolute Path for Helm
         run: |
-          echo "Modifying run.sh to use an absolute path for override-values.yaml..."
-          # This command finds the line with '-f override-values.yaml' in run.sh and replaces it
-          # with a version that uses an absolute path via the $GITHUB_WORKSPACE variable.
-          # This makes the command work regardless of the script's current directory.
           sed -i "s|-f override-values.yaml|-f $GITHUB_WORKSPACE/override-values.yaml|g" run.sh
-          
-          echo "Verification: Displaying modified helm command in run.sh"
-          grep "helm install" run.sh
-      # --- END: NEW FOOLPROOF FIX ---
 
       - name: 8. Run Setup Script to Deploy TraceAssist
         run: |
           chmod +x ./run.sh
           eval $(minikube -p minikube docker-env)
-          # The run.sh script now contains a helm command with an absolute path, which will not fail.
           ./run.sh
           
+      # --- START: MODIFIED STEP TO FIX THE RACE CONDITION ---
       - name: 9. Wait for All Deployments to be Ready
         run: |
-          echo "Waiting for all deployments in 'traceassist' and 'signoz' namespaces... (timeout 5m)"
+          echo "Waiting for TraceAssist deployments to be ready..."
           kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
-          kubectl wait --for=condition=available deployment --all -n signoz --timeout=300s
-          echo "All required pods are running."
-          kubectl get pods -A
+          echo "TraceAssist deployments are ready."
 
-      # ... (The rest of the steps for port-forwarding, API testing, and cleanup remain the same) ...
+          echo "Waiting for SigNoz deployments to be created by Helm..."
+          for i in {1..30}; do
+            # Check if at least one deployment exists in the signoz namespace
+            if kubectl get deployment -n signoz --no-headers | grep -q .; then
+              echo "SigNoz deployments have been created."
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Now that we know the resources exist, wait for them to be available
+          echo "Waiting for SigNoz deployments to become available..."
+          kubectl wait --for=condition=available deployment --all -n signoz --timeout=300s
+          
+          echo "All required deployments are running."
+          kubectl get pods -A
+      # --- END: MODIFIED STEP ---
 
       - name: 10. Port-forward Backend Service
         run: |
@@ -297,6 +301,10 @@ jobs:
           
           chmod +x ./cleanup.sh
           ./cleanup.sh
+          
+          echo "Deleting Minikube cluster..."
+          minikube delete
+          echo "Cleanup complete."
           
           echo "Deleting Minikube cluster..."
           minikube delete
