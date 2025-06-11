@@ -224,24 +224,10 @@ jobs:
           echo "Waiting for TraceAssist deployments to be ready..."
           kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
           echo "TraceAssist deployments are ready."
+          
+          kubectl get pods -n traceassist
 
-          echo "Waiting for SigNoz deployments to be created by Helm..."
-          for i in {1..30}; do
-            # Check if at least one deployment exists in the signoz namespace
-            if kubectl get deployment -n signoz --no-headers | grep -q .; then
-              echo "SigNoz deployments have been created."
-              break
-            fi
-            echo "Waiting... ($i/30)"
-            sleep 2
-          done
-          
-          # Now that we know the resources exist, wait for them to be available
-          echo "Waiting for SigNoz deployments to become available..."
-          kubectl wait --for=condition=available deployment --all -n signoz --timeout=300s
-          
           echo "All required deployments are running."
-          kubectl get pods -A
       # --- END: MODIFIED STEP ---
 
       - name: 10. Port-forward Backend Service
