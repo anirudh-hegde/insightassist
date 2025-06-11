@@ -167,7 +167,7 @@
 
 # .github/workflows/cicd.yml
 
-name: TraceAssist - Full Workflow CI
+name: InsightAssist - Full Workflow CI
 
 on:
   push:
@@ -204,26 +204,28 @@ jobs:
           echo "SIGNOZ_CLOUD_API_KEY=${{ secrets.SIGNOZ_CLOUD_API_KEY }}" >> .env
           echo "PAT_TOKEN=${{ secrets.PAT_TOKEN }}" >> .env
 
-      # --- START: MODIFIED STEP TO FIX THE ERROR ---
       - name: 6. Update override-values.yaml with Secret
         run: |
           echo "Replacing placeholder in override-values.yaml..."
-          # Use sed to find the placeholder and replace it with the secret.
-          # The -i flag modifies the file in-place.
           sed -i 's|YOUR_SIGNOZ_API_KEY_PLACEHOLDER|${{ secrets.SIGNOZ_CLOUD_API_KEY }}|g' override-values.yaml
-          
-          echo "Verification: Checking the content of the signozApiKey line (key will be masked in logs):"
           grep "signozApiKey" override-values.yaml
-      # --- END: MODIFIED STEP ---
 
-      - name: 7. Run Setup Script to Deploy TraceAssist
+      # --- START: NEW STEP TO FIX "file not found" ERROR ---
+      - name: 7. Copy override-values.yaml to k8s directory
+        run: |
+          echo "Copying modified override-values.yaml to the k8s/ directory..."
+          cp override-values.yaml k8s/override-values.yaml
+          echo "File copied successfully."
+      # --- END: NEW STEP ---
+
+      - name: 8. Run Setup Script to Deploy TraceAssist
         run: |
           chmod +x ./run.sh
           eval $(minikube -p minikube docker-env)
-          # The run.sh script will now use the MODIFIED override-values.yaml file
+          # The run.sh script can now find the values file even if it changes directory
           ./run.sh
           
-      - name: 8. Wait for All Deployments to be Ready
+      - name: 9. Wait for All Deployments to be Ready
         run: |
           echo "Waiting for all deployments in 'traceassist' and 'signoz' namespaces... (timeout 5m)"
           kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
@@ -231,12 +233,12 @@ jobs:
           echo "All required pods are running."
           kubectl get pods -A
 
-      - name: 9. Port-forward Backend Service
+      - name: 10. Port-forward Backend Service
         run: |
           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
 
-      - name: 10. Wait for Port-forward to be Ready
+      - name: 11. Wait for Port-forward to be Ready
         run: |
           echo "Waiting for port-forward to establish..."
           for i in {1..20}; do
@@ -249,13 +251,14 @@ jobs:
           echo "::error::Port-forward failed to become ready after 20 seconds."
           exit 1
       
-      - name: 11. Simulate User Flow via API
+      - name: 12. Simulate User Flow via API
         id: api_flow
         shell: bash
+        # (This step remains unchanged)
         run: |
           set -ex
           SAMPLE_REPO="https://github.com/heroku/node-js-getting-started.git"
-          
+          # ... rest of the API calls ...
           # --- CLONE ---
           CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone -H "Content-Type: application/json" -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
           APP_ID=$(echo $CLONE_RESPONSE | jq -r .app_id)
@@ -280,8 +283,9 @@ jobs:
           if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
           echo "Successfully received AI suggestions."
           
-      - name: 12. Cleanup All Resources
+      - name: 13. Cleanup All Resources
         if: always()
+        # (This step remains unchanged)
         run: |
           echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
           kill ${{ env.BACKEND_PID }} || true
