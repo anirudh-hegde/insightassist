@@ -224,9 +224,10 @@ jobs:
           echo "Waiting for TraceAssist deployments to be ready..."
           kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
           echo "TraceAssist deployments are ready."
+
+          sleep 60
           
           kubectl get pods -n traceassist
-
           echo "All required deployments are running."
       # --- END: MODIFIED STEP ---
 
@@ -234,21 +235,8 @@ jobs:
         run: |
           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
-
-      - name: 11. Wait for Port-forward to be Ready
-        run: |
-          echo "Waiting for port-forward to establish..."
-          for i in {1..20}; do
-            if curl -s --fail http://localhost:8000/ > /dev/null; then
-              echo "Port-forward is ready."
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "::error::Port-forward failed to become ready after 20 seconds."
-          exit 1
       
-      - name: 12. Simulate User Flow via API
+      - name: 11. Simulate User Flow via API
         id: api_flow
         shell: bash
         run: |
@@ -279,7 +267,7 @@ jobs:
           if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
           echo "Successfully received AI suggestions."
           
-      - name: 13. Cleanup All Resources
+      - name: 12. Cleanup All Resources
         if: always()
         run: |
           echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
