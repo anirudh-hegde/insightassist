@@ -31,15 +31,11 @@ jobs:
       - name: 3. Start Minikube Cluster
         run: minikube start --memory=8192 --cpus=4
 
-      - name: 4. Setup kubectl
-        uses: azure/setup-kubectl@latest
-        # with:
-        #   version: default # Specify a stable version
-
-      - name: 5. Setup Helm
-        uses: azure/setup-helm@latest
-        # with:
-        #   version: default # Specify a stable version
+      - name: 4. Setup kubectl & Helm
+        uses: azure/setup-kubectl@v4
+        with: { version: 'v1.30.0' }
+      - uses: azure/setup-helm@v4
+        with: { version: 'v3.15.2' }
 
       - name: 6. Create .env file from Secrets
         run: |
