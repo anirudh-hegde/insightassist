@@ -29,7 +29,7 @@ jobs:
         #   minikube-version: default # Specify a stable version
 
       - name: 3. Start Minikube Cluster
-        run: minikube start --driver=docker --memory=8192 --cpus=4
+        run: minikube start
 
       - name: 4. Setup kubectl & Helm
         uses: azure/setup-kubectl@v4
