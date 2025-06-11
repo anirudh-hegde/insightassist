@@ -168,7 +168,6 @@
 # .github/workflows/cicd.yml
 
 name: InsightAssist - Full Workflow CI
-
 on:
   push:
     branches:
@@ -208,21 +207,27 @@ jobs:
         run: |
           echo "Replacing placeholder in override-values.yaml..."
           sed -i 's|YOUR_SIGNOZ_API_KEY_PLACEHOLDER|${{ secrets.SIGNOZ_CLOUD_API_KEY }}|g' override-values.yaml
+          echo "Verification of override-values.yaml:"
           grep "signozApiKey" override-values.yaml
 
-      # --- START: NEW STEP TO FIX "file not found" ERROR ---
-      - name: 7. Copy override-values.yaml to k8s directory
+      # --- START: NEW FOOLPROOF FIX ---
+      - name: 7. Modify run.sh to Use Absolute Path for Helm
         run: |
-          echo "Copying modified override-values.yaml to the k8s/ directory..."
-          cp override-values.yaml k8s/override-values.yaml
-          echo "File copied successfully."
-      # --- END: NEW STEP ---
+          echo "Modifying run.sh to use an absolute path for override-values.yaml..."
+          # This command finds the line with '-f override-values.yaml' in run.sh and replaces it
+          # with a version that uses an absolute path via the $GITHUB_WORKSPACE variable.
+          # This makes the command work regardless of the script's current directory.
+          sed -i "s|-f override-values.yaml|-f $GITHUB_WORKSPACE/override-values.yaml|g" run.sh
+          
+          echo "Verification: Displaying modified helm command in run.sh"
+          grep "helm install" run.sh
+      # --- END: NEW FOOLPROOF FIX ---
 
       - name: 8. Run Setup Script to Deploy TraceAssist
         run: |
           chmod +x ./run.sh
           eval $(minikube -p minikube docker-env)
-          # The run.sh script can now find the values file even if it changes directory
+          # The run.sh script now contains a helm command with an absolute path, which will not fail.
           ./run.sh
           
       - name: 9. Wait for All Deployments to be Ready
@@ -232,6 +237,8 @@ jobs:
           kubectl wait --for=condition=available deployment --all -n signoz --timeout=300s
           echo "All required pods are running."
           kubectl get pods -A
+
+      # ... (The rest of the steps for port-forwarding, API testing, and cleanup remain the same) ...
 
       - name: 10. Port-forward Backend Service
         run: |
@@ -254,11 +261,10 @@ jobs:
       - name: 12. Simulate User Flow via API
         id: api_flow
         shell: bash
-        # (This step remains unchanged)
         run: |
           set -ex
           SAMPLE_REPO="https://github.com/heroku/node-js-getting-started.git"
-          # ... rest of the API calls ...
+          
           # --- CLONE ---
           CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone -H "Content-Type: application/json" -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
           APP_ID=$(echo $CLONE_RESPONSE | jq -r .app_id)
@@ -285,7 +291,6 @@ jobs:
           
       - name: 13. Cleanup All Resources
         if: always()
-        # (This step remains unchanged)
         run: |
           echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
           kill ${{ env.BACKEND_PID }} || true
