@@ -229,15 +229,15 @@ jobs:
           if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
           echo "Successfully received AI suggestions."
           
-      - name: 11. Cleanup All Resources
-        if: always()
-        run: |
-          echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
-          kill ${{ env.BACKEND_PID }} || true
+      # - name: 11. Cleanup All Resources
+      #   if: always()
+      #   run: |
+      #     echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
+      #     kill ${{ env.BACKEND_PID }} || true
           
-          chmod +x ./cleanup.sh
-          ./cleanup.sh
+      #     chmod +x ./cleanup.sh
+      #     ./cleanup.sh
           
-          echo "Deleting Minikube cluster..."
-          minikube delete
-          echo "Cleanup complete."
+      #     echo "Deleting Minikube cluster..."
+      #     minikube delete
+      #     echo "Cleanup complete."
