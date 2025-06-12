@@ -193,8 +193,9 @@ jobs:
           kubectl get pods -n traceassist
           echo "All required deployments are running."
 
-      - name: 9. Port-forward Backend Service
+      - name: 9. Port-forward Frontend and Backend Service
         run: |
+          kubectl port-forward svc/traceassist-frontend -n traceassist 5173:5173 &
           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
       
