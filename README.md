@@ -152,5 +152,5 @@ Please follow the Contributor Covenant and our code style guidelines.
 ---
 
 
-Made by Harshit Jindal.
+Made by Anirudh Hegde.
 Empowering developers to instrument in one click!
