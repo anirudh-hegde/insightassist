@@ -138,7 +138,7 @@ on:
         type: string
 
 jobs:
-  instrument-sample-app:
+  instrument-app:
     runs-on: ubuntu-latest
     steps:
       - name: 1. Checkout Repository
