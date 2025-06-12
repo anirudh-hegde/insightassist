@@ -115,13 +115,16 @@
 
 name: InsightAssist - Full Workflow CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
-    branches: [ main ] # Using YAML array syntax for clarity
+    branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    # <--- START: MODIFIED SECTION ---
     inputs:
       repo_url:
         description: 'The full URL of the sample repository to instrument (e.g., https://github.com/user/repo.git)'
@@ -133,14 +136,15 @@ on:
         required: true
         default: 'main'
         type: string
-    # <--- END: MODIFIED SECTION ---
 
 jobs:
-  instrument-app:
+  instrument-sample-app:
     runs-on: ubuntu-latest
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
+
+      # ... (steps 2-10 are unchanged) ...
 
       - name: 2. Setup Minikube Binary
         uses: medyagh/setup-minikube@v0.0.17
@@ -191,19 +195,20 @@ jobs:
           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
       
+      # <--- START: MODIFIED STEP TO FIX THE ERROR ---
       - name: 11. Simulate User Flow via API
         id: api_flow
         shell: bash
+        # Set SAMPLE_REPO conditionally. Use manual input if available, otherwise use a default.
+        env:
+          SAMPLE_REPO: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.repo_url) || 'https://github.com/heroku/node-js-getting-started.git' }}
         run: |
           set -ex
           
-          # <--- MODIFIED: Use the workflow input for the repository URL ---
-          # Note: The branch_name input is available as '${{ github.event.inputs.branch_name }}'
-          # but the current /clone API call doesn't seem to use it.
-          SAMPLE_REPO="${{ github.event.inputs.repo_url }}"
+          # The SAMPLE_REPO environment variable is now used directly.
+          echo "Using repository: ${SAMPLE_REPO}"
           
           # --- CLONE ---
-          # The repo_url from the manual trigger is passed to the API here.
           CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone -H "Content-Type: application/json" -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
           APP_ID=$(echo $CLONE_RESPONSE | jq -r .app_id)
           if [ -z "$APP_ID" ] || [ "$APP_ID" == "null" ]; then echo "::error::Failed to clone" && exit 1; fi
@@ -224,6 +229,7 @@ jobs:
           HTTP_STATUS=$(echo "$SUGGEST_RESPONSE" | tail -n1 | sed 's/.*://')
           if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
           echo "Successfully received AI suggestions."
+      # <--- END: MODIFIED STEP ---
           
       - name: 12. Cleanup All Resources
         if: always()
