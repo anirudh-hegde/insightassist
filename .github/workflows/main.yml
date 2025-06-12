@@ -144,47 +144,47 @@ jobs:
 
       # <--- START: MODIFIED STEP ---
       # Tell the action to ONLY install the binary and NOT start the cluster.
-      - name: 2. Setup Minikube Binary
-        uses: medyagh/setup-minikube@v0.0.17
-        with:
-          start: false
+      # - name: 2. Setup Minikube Binary
+      #   uses: medyagh/setup-minikube@v0.0.17
+      #   with:
+      #     start: false
       # <--- END: MODIFIED STEP ---
 
-      - name: 3. Restart Minikube Cluster for a Clean State
+      - name: 2. Restart Minikube Cluster for a Clean State
         run: |
           echo "Ensuring no old cluster exists..."
           minikube delete || true
           echo "Starting a fresh Minikube cluster..."
-          minikube start --driver=docker --memory=4096
+          minikube start --driver=docker --memory=8192 --cpus=4
 
-      - name: 4. Setup kubectl & Helm
+      - name: 3. Setup kubectl & Helm
         uses: azure/setup-kubectl@v4
         with: { version: 'v1.30.0' }
       - uses: azure/setup-helm@v4
         with: { version: 'v3.15.2' }
 
-      - name: 5. Create .env file from Secrets
+      - name: 4. Create .env file from Secrets
         run: |
           echo "SIGNOZ_CLOUD_ENDPOINT=ingest.in.signoz.cloud:4317" >> .env
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
           echo "SIGNOZ_CLOUD_API_KEY=${{ secrets.SIGNOZ_CLOUD_API_KEY }}" >> .env
           echo "PAT_TOKEN=${{ secrets.PAT_TOKEN }}" >> .env
 
-      - name: 6. Update override-values.yaml with Secret
+      - name: 5. Update override-values.yaml with Secret
         run: |
           sed -i 's|YOUR_SIGNOZ_API_KEY_PLACEHOLDER|${{ secrets.SIGNOZ_CLOUD_API_KEY }}|g' override-values.yaml
 
-      - name: 7. Modify run.sh to Use Absolute Path for Helm
+      - name: 6. Modify run.sh to Use Absolute Path for Helm
         run: |
           sed -i "s|-f override-values.yaml|-f $GITHUB_WORKSPACE/override-values.yaml|g" run.sh
 
-      - name: 8. Run Setup Script to Deploy TraceAssist
+      - name: 7. Run Setup Script to Deploy TraceAssist
         run: |
           chmod +x ./run.sh
           eval $(minikube -p minikube docker-env)
           ./run.sh
           
-      - name: 9. Wait for All Deployments to be Ready
+      - name: 8. Wait for All Deployments to be Ready
         run: |
           echo "Waiting for TraceAssist deployments to be ready..."
           kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
@@ -193,12 +193,12 @@ jobs:
           kubectl get pods -n traceassist
           echo "All required deployments are running."
 
-      - name: 10. Port-forward Backend Service
+      - name: 9. Port-forward Backend Service
         run: |
           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
       
-      - name: 11. Simulate User Flow via API
+      - name: 10. Simulate User Flow via API
         id: api_flow
         shell: bash
         env:
@@ -229,7 +229,7 @@ jobs:
           if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
           echo "Successfully received AI suggestions."
           
-      - name: 12. Cleanup All Resources
+      - name: 11. Cleanup All Resources
         if: always()
         run: |
           echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
