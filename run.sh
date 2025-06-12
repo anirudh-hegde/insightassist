@@ -43,7 +43,15 @@ echo "🔐 Installing cert-manager..."
 kubectl apply --validate=false \
   -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
 
+
 echo "⏳ Waiting for cert-manager webhook..."
+# new piece of code
+# ----------------------------------------------
+kubectl wait \
+  --for=condition=available deployment \
+  --all -n cert-manager \
+  --timeout=180s
+# -------------------------------------------------
 kubectl -n cert-manager rollout status deployment cert-manager-webhook --timeout=180s
 
 # ─── 5. Install the OpenTelemetry Operator ────────────────────────────────────
