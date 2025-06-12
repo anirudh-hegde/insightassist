@@ -1,16 +1,142 @@
+# name: InsightAssist - Full Workflow CI
+
+# on:
+#   push:
+#     branches:
+#       - main
+#   pull_request:
+#     branches:
+#       - main
+#   workflow_dispatch:
+
+# jobs:
+#   instrument-sample-app:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: 1. Checkout Repository
+#         uses: actions/checkout@v4
+
+#       - name: 2. Setup Minikube Binary
+#         uses: medyagh/setup-minikube@v0.0.17
+
+#       - name: 3. Start Minikube Cluster
+#         run: minikube start --driver=docker --memory=4096
+
+#       - name: 4. Setup kubectl & Helm
+#         uses: azure/setup-kubectl@v4
+#         with: { version: 'v1.30.0' }
+#       - uses: azure/setup-helm@v4
+#         with: { version: 'v3.15.2' }
+
+#       - name: 5. Create .env file from Secrets
+#         run: |
+#           echo "SIGNOZ_CLOUD_ENDPOINT=ingest.in.signoz.cloud:4317" >> .env
+#           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+#           echo "SIGNOZ_CLOUD_API_KEY=${{ secrets.SIGNOZ_CLOUD_API_KEY }}" >> .env
+#           echo "PAT_TOKEN=${{ secrets.PAT_TOKEN }}" >> .env
+
+#       - name: 6. Update override-values.yaml with Secret
+#         run: |
+#           sed -i 's|YOUR_SIGNOZ_API_KEY_PLACEHOLDER|${{ secrets.SIGNOZ_CLOUD_API_KEY }}|g' override-values.yaml
+
+#       - name: 7. Modify run.sh to Use Absolute Path for Helm
+#         run: |
+#           sed -i "s|-f override-values.yaml|-f $GITHUB_WORKSPACE/override-values.yaml|g" run.sh
+
+#       - name: 8. Run Setup Script to Deploy TraceAssist
+#         run: |
+#           chmod +x ./run.sh
+#           eval $(minikube -p minikube docker-env)
+#           ./run.sh
+          
+#       # --- START: MODIFIED STEP TO FIX THE RACE CONDITION ---
+#       - name: 9. Wait for All Deployments to be Ready
+#         run: |
+#           echo "Waiting for TraceAssist deployments to be ready..."
+#           kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
+#           echo "TraceAssist deployments are ready."
+
+#           sleep 60
+          
+#           kubectl get pods -n traceassist
+#           echo "All required deployments are running."
+#       # --- END: MODIFIED STEP ---
+
+#       - name: 10. Port-forward Backend Service
+#         run: |
+#           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
+#           echo "BACKEND_PID=$!" >> $GITHUB_ENV
+      
+#       - name: 11. Simulate User Flow via API
+#         id: api_flow
+#         shell: bash
+#         run: |
+#           set -ex
+#           SAMPLE_REPO="https://github.com/heroku/node-js-getting-started.git"
+          
+#           # --- CLONE ---
+#           CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone -H "Content-Type: application/json" -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
+#           APP_ID=$(echo $CLONE_RESPONSE | jq -r .app_id)
+#           if [ -z "$APP_ID" ] || [ "$APP_ID" == "null" ]; then echo "::error::Failed to clone" && exit 1; fi
+#           echo "Clone successful. App ID: $APP_ID"
+          
+#           # --- INSTRUMENT ---
+#           INSTRUMENT_RESPONSE=$(curl -s -X POST http://localhost:8000/instrument -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}")
+#           K8S_APP_NAME=$(echo $INSTRUMENT_RESPONSE | jq -r .k8s_app_name)
+#           if [ -z "$K8S_APP_NAME" ] || [ "$K8S_APP_NAME" == "null" ]; then echo "::error::Failed to get k8s_app_name" && exit 1; fi
+#           echo "User app deployed."
+          
+#           # --- RUN ---
+#           curl -s -X POST http://localhost:8000/run -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}" | jq .
+          
+#           # --- SUGGEST ---
+#           SUGGEST_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST http://localhost:8000/suggestions -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}")
+#           HTTP_BODY=$(echo "$SUGGEST_RESPONSE" | sed '$d')
+#           HTTP_STATUS=$(echo "$SUGGEST_RESPONSE" | tail -n1 | sed 's/.*://')
+#           if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
+#           echo "Successfully received AI suggestions."
+          
+#       - name: 12. Cleanup All Resources
+#         if: always()
+#         run: |
+#           echo "Stopping port-forward (PID: ${{ env.BACKEND_PID }})..."
+#           kill ${{ env.BACKEND_PID }} || true
+          
+#           chmod +x ./cleanup.sh
+#           ./cleanup.sh
+          
+#           echo "Deleting Minikube cluster..."
+#           minikube delete
+#           echo "Cleanup complete."
+          
+#           echo "Deleting Minikube cluster..."
+#           minikube delete
+#           echo "Cleanup complete."
+
 name: InsightAssist - Full Workflow CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ] # Using YAML array syntax for clarity
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
+    # <--- START: MODIFIED SECTION ---
+    inputs:
+      repo_url:
+        description: 'The full URL of the sample repository to instrument (e.g., https://github.com/user/repo.git)'
+        required: true
+        default: 'https://github.com/heroku/node-js-getting-started.git'
+        type: string
+      branch_name:
+        description: 'The branch name to use from the sample repository'
+        required: true
+        default: 'main'
+        type: string
+    # <--- END: MODIFIED SECTION ---
 
 jobs:
-  instrument-sample-app:
+  instrument-app:
     runs-on: ubuntu-latest
     steps:
       - name: 1. Checkout Repository
@@ -49,7 +175,6 @@ jobs:
           eval $(minikube -p minikube docker-env)
           ./run.sh
           
-      # --- START: MODIFIED STEP TO FIX THE RACE CONDITION ---
       - name: 9. Wait for All Deployments to be Ready
         run: |
           echo "Waiting for TraceAssist deployments to be ready..."
@@ -60,7 +185,6 @@ jobs:
           
           kubectl get pods -n traceassist
           echo "All required deployments are running."
-      # --- END: MODIFIED STEP ---
 
       - name: 10. Port-forward Backend Service
         run: |
@@ -72,9 +196,14 @@ jobs:
         shell: bash
         run: |
           set -ex
-          SAMPLE_REPO="https://github.com/heroku/node-js-getting-started.git"
+          
+          # <--- MODIFIED: Use the workflow input for the repository URL ---
+          # Note: The branch_name input is available as '${{ github.event.inputs.branch_name }}'
+          # but the current /clone API call doesn't seem to use it.
+          SAMPLE_REPO="${{ github.event.inputs.repo_url }}"
           
           # --- CLONE ---
+          # The repo_url from the manual trigger is passed to the API here.
           CLONE_RESPONSE=$(curl -s -X POST http://localhost:8000/clone -H "Content-Type: application/json" -d "{\"repo_url\": \"${SAMPLE_REPO}\"}")
           APP_ID=$(echo $CLONE_RESPONSE | jq -r .app_id)
           if [ -z "$APP_ID" ] || [ "$APP_ID" == "null" ]; then echo "::error::Failed to clone" && exit 1; fi
@@ -104,10 +233,6 @@ jobs:
           
           chmod +x ./cleanup.sh
           ./cleanup.sh
-          
-          echo "Deleting Minikube cluster..."
-          minikube delete
-          echo "Cleanup complete."
           
           echo "Deleting Minikube cluster..."
           minikube delete
