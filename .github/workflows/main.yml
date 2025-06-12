@@ -113,6 +113,8 @@
 #           minikube delete
 #           echo "Cleanup complete."
 
+
+
 name: InsightAssist - Full Workflow CI
 
 concurrency:
@@ -120,10 +122,6 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       repo_url:
@@ -138,20 +136,25 @@ on:
         type: string
 
 jobs:
-  instrument-app:
+  instrument-sample-app:
     runs-on: ubuntu-latest
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
 
-      # ... (steps 2-10 are unchanged) ...
-
+      # <--- START: MODIFIED STEP ---
+      # Tell the action to ONLY install the binary and NOT start the cluster.
       - name: 2. Setup Minikube Binary
         uses: medyagh/setup-minikube@v0.0.17
+        with:
+          start: false
+      # <--- END: MODIFIED STEP ---
 
-      - name: 3. Delete and restart Minikube Cluster
-        run: | 
+      - name: 3. Restart Minikube Cluster for a Clean State
+        run: |
+          echo "Ensuring no old cluster exists..."
           minikube delete || true
+          echo "Starting a fresh Minikube cluster..."
           minikube start --driver=docker --memory=4096
 
       - name: 4. Setup kubectl & Helm
@@ -186,9 +189,7 @@ jobs:
           echo "Waiting for TraceAssist deployments to be ready..."
           kubectl wait --for=condition=available deployment --all -n traceassist --timeout=300s
           echo "TraceAssist deployments are ready."
-
           sleep 60
-          
           kubectl get pods -n traceassist
           echo "All required deployments are running."
 
@@ -197,17 +198,13 @@ jobs:
           kubectl port-forward svc/traceassist-backend -n traceassist 8000:8000 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
       
-      # <--- START: MODIFIED STEP TO FIX THE ERROR ---
       - name: 11. Simulate User Flow via API
         id: api_flow
         shell: bash
-        # Set SAMPLE_REPO conditionally. Use manual input if available, otherwise use a default.
         env:
-          SAMPLE_REPO: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.repo_url) || 'https://github.com/heroku/node-js-getting-started.git' }}
+          SAMPLE_REPO: ${{ github.event.inputs.repo_url }}
         run: |
           set -ex
-          
-          # The SAMPLE_REPO environment variable is now used directly.
           echo "Using repository: ${SAMPLE_REPO}"
           
           # --- CLONE ---
@@ -217,7 +214,7 @@ jobs:
           echo "Clone successful. App ID: $APP_ID"
           
           # --- INSTRUMENT ---
-          INSTRUMENT_RESPONSE=$(curl -s -X POST http://localhost:8000/instrument -H "Content-Type: application/json" -d "{\"app_id\": \"$APP_ID\"}")
+          INSTRUMENT_RESPONSE=$(curl -s -X POST http://localhost:8000/instrument -H "Content-type: application/json" -d "{\"app_id\": \"$APP_ID\"}")
           K8S_APP_NAME=$(echo $INSTRUMENT_RESPONSE | jq -r .k8s_app_name)
           if [ -z "$K8S_APP_NAME" ] || [ "$K8S_APP_NAME" == "null" ]; then echo "::error::Failed to get k8s_app_name" && exit 1; fi
           echo "User app deployed."
@@ -231,7 +228,6 @@ jobs:
           HTTP_STATUS=$(echo "$SUGGEST_RESPONSE" | tail -n1 | sed 's/.*://')
           if [ "$HTTP_STATUS" -ne 200 ]; then echo "::error::Suggestions failed with status $HTTP_STATUS" && exit 1; fi
           echo "Successfully received AI suggestions."
-      # <--- END: MODIFIED STEP ---
           
       - name: 12. Cleanup All Resources
         if: always()
