@@ -149,8 +149,10 @@ jobs:
       - name: 2. Setup Minikube Binary
         uses: medyagh/setup-minikube@v0.0.17
 
-      - name: 3. Start Minikube Cluster
-        run: minikube start --driver=docker --memory=4096
+      - name: 3. Delete and restart Minikube Cluster
+        run: | 
+          minikube delete || true
+          minikube start --driver=docker --memory=4096
 
       - name: 4. Setup kubectl & Helm
         uses: azure/setup-kubectl@v4
