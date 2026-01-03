@@ -152,5 +152,5 @@ Please follow the Contributor Covenant and our code style guidelines.
 ---
 
 
-Made by Anirudh Hegde.
+Made by team members.
 Empowering developers to instrument in one click!
