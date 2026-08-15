@@ -77,7 +77,7 @@ InsightAssist Backend ──► Kubernetes Manifests (deployment+service .yaml)
 ### 1. Clone & Configure
 
 ```bash
-git clone https://github.com/harshit-jindal02/InsightAssist.git
+https://github.com/anirudh-hegde/insightassist.git
 cd InsightAssist
 cp .env.sample .env
 # Edit .env:
